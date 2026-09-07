@@ -139,7 +139,9 @@ def main():
         metrics[k], _ = S.smooth_series(metrics[k],
                                         window=max(5, int(round(fps * 0.4)) | 1), poly=2)
 
-    seg = TU.segment(metrics["toe_heel"], fps)
+    # frames_kept guards against inference dropping frames mid-track: without it
+    # the series compacts and every turn duration is understated.
+    seg = TU.segment(metrics["toe_heel"], fps, frames=frames_kept)
     scored = TU.score_turns(seg, metrics, fps)
     sym = TU.symmetry(scored)
     cons = TU.consistency(scored)
