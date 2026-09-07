@@ -54,7 +54,7 @@ OLD_CALL = '''        self.encoder = torch.hub.load(
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", default="/data/rick/sam3d/sam-3d-body")
+    ap.add_argument("--repo", default="./sam-3d-body")
     args = ap.parse_args()
 
     f = Path(args.repo) / "sam_3d_body/models/backbones/dinov3.py"

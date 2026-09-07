@@ -15,6 +15,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from snowpose import geometry as G, mhr, overlay as O, report as R  # noqa: E402
+from snowpose import config as CFG  # noqa: E402
 from snowpose import smooth as S, track as T, turns as TU, video as V  # noqa: E402
 
 METRIC_KEYS = ["inclination", "angulation", "lower_leg_lean", "knee_flex_l",
@@ -30,8 +31,8 @@ def main():
     ap.add_argument("--end", type=float, default=None)
     ap.add_argument("--fps", type=float, default=12.0, help="analysis frame rate")
     ap.add_argument("--stance", default="auto", choices=["auto", "regular", "goofy"])
-    ap.add_argument("--weights", default="/home/rick/assets/yolo26x.pt")
-    ap.add_argument("--out", default="/data/rick/sam3d/run_out")
+    ap.add_argument("--weights", default=CFG.DETECTOR)
+    ap.add_argument("--out", default="./out/run")
     ap.add_argument("--device", default="0")
     ap.add_argument("--min-box-height", type=float, default=120.0)
     ap.add_argument("--no-video", action="store_true")

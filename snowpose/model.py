@@ -9,17 +9,16 @@ from pathlib import Path
 
 import numpy as np
 
-DEFAULT_CKPT = "/data/rick/sam3d/ckpt/model.ckpt"
-DEFAULT_MHR = "/data/rick/sam3d/ckpt/assets/mhr_model.pt"
+from .config import CKPT, MHR_PATH
 
 
 class BodyModel:
-    def __init__(self, ckpt=DEFAULT_CKPT, mhr_path=DEFAULT_MHR, device="cuda"):
+    def __init__(self, ckpt=None, mhr_path=None, device="cuda"):
         import torch
         from sam_3d_body import load_sam_3d_body, SAM3DBodyEstimator
 
-        model, cfg = load_sam_3d_body(str(ckpt), device=torch.device(device),
-                                      mhr_path=str(mhr_path))
+        model, cfg = load_sam_3d_body(str(ckpt or CKPT), device=torch.device(device),
+                                      mhr_path=str(mhr_path or MHR_PATH))
         self.est = SAM3DBodyEstimator(sam_3d_body_model=model, model_cfg=cfg)
         self.faces = self.est.faces
 

@@ -6,10 +6,10 @@ run into specific, actionable technique feedback.
 
 ## Status
 
-Setup validated end to end on **ultra11** (Shenzhen, 8× RTX 6000D): the model runs on
-real snowboard-cross frames and the recovered mesh lands correctly on a rider in a
-deep carve, wearing helmet, goggles and bulky kit. See `docs/design.md` for the
-output schema, the coordinate-frame findings, and the metric design.
+Validated end to end on an 8x RTX 6000D box: the model runs on real
+snowboard-cross frames and the recovered mesh lands correctly on a rider in a deep
+carve, wearing helmet, goggles and bulky kit. See `docs/design.md` for the output
+schema, the coordinate-frame findings, and the metric design.
 
 ## Layout
 
@@ -42,14 +42,28 @@ Writes `overlay.mp4`, `metrics.csv`, `turns.json` and `report.md`. Pass
 `--stance regular|goofy` when you know it; `auto` infers it from where the rider
 looks and prints its confidence.
 
-## Environment
+## Setup
 
-Remote, because the model needs a GPU and the checkpoints are large:
+Needs a CUDA GPU. SAM 3D Body itself is a separate install:
 
-    ssh ultra11
-    cd /data/rick/sam3d/sam-3d-body
-    CUDA_VISIBLE_DEVICES=0 YOLO_CONFIG_DIR=/data/rick/ultra_cfg \
-      /data/rick/sam3d/venv/bin/python scripts/smoke_test.py
+1. Clone [SAM 3D Body](https://github.com/facebookresearch/sam-3d-body) and follow
+   its `INSTALL.md` (python 3.11, torch, detectron2 at the pinned commit).
+2. **Request access** to the checkpoints on Hugging Face — they are gated and
+   approved manually by Meta: [`facebook/sam-3d-body-dinov3`](https://huggingface.co/facebook/sam-3d-body-dinov3).
+   Then `hf download facebook/sam-3d-body-dinov3 --local-dir checkpoints/sam-3d-body-dinov3`.
+3. Install this package's requirements (`numpy`, `opencv-python`, `ultralytics`) into
+   the same environment, and make `sam_3d_body` importable (`PYTHONPATH=/path/to/sam-3d-body`).
+
+Paths come from the environment, with defaults matching the layout above:
+
+    SAM3D_CKPT          checkpoints/sam-3d-body-dinov3/model.ckpt
+    SAM3D_MHR_PATH      checkpoints/sam-3d-body-dinov3/assets/mhr_model.pt
+    SNOWPOSE_DETECTOR   person detector weights   (default yolo11x.pt)
+    SNOWPOSE_SEGMENTOR  segmentation weights      (default yolo11x-seg.pt)
+
+Then verify the install and print the model's output conventions:
+
+    python scripts/smoke_test.py --frames ./frames --dets ./dets.json
 
 Read `docs/design.md` before trusting the report: the geometry is verified
 against synthetic ground truth and real footage, but the coaching thresholds are

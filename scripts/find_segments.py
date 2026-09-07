@@ -12,11 +12,17 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from snowpose import config as CFG  # noqa: E402
+
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--video", required=True)
-    ap.add_argument("--weights", default="/home/rick/assets/yolo26x.pt")
+    ap.add_argument("--weights", default=CFG.DETECTOR)
     ap.add_argument("--sample-fps", type=float, default=1.0)
     ap.add_argument("--min-height", type=float, default=150.0,
                     help="px; below this the mesh gets unreliable")
@@ -46,7 +52,7 @@ def main():
             if ok:
                 r = model.predict(frame, classes=[0], conf=0.4, imgsz=960, verbose=False,
                                   device=args.device, save=False,
-                                  project="/data/rick/sam3d/runs", name="seg",
+                                  project="./out/yolo", name="seg",
                                   exist_ok=True)[0]
                 hs = []
                 if r.boxes is not None and len(r.boxes):

@@ -20,9 +20,9 @@ from snowpose.model import BodyModel  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--frames", default="/data/rick/sam3d/smoke_frames")
-    ap.add_argument("--dets", default="/data/rick/sam3d/smoke_dets.json")
-    ap.add_argument("--out", default="/data/rick/sam3d/stability")
+    ap.add_argument("--frames", default="./frames")
+    ap.add_argument("--dets", default="./dets.json")
+    ap.add_argument("--out", default="./out/stability")
     args = ap.parse_args()
 
     out = Path(args.out)

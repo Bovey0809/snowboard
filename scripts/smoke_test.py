@@ -13,6 +13,12 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from snowpose import config as CFG  # noqa: E402
 import torch
 
 # Joint indices from sam_3d_body/metadata/mhr70.py
@@ -47,11 +53,11 @@ def project(pts3d, focal, cam_t, cx, cy):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--frames", default="/data/rick/sam3d/smoke_frames")
-    ap.add_argument("--dets", default="/data/rick/sam3d/smoke_dets.json")
-    ap.add_argument("--ckpt", default="/data/rick/sam3d/ckpt/model.ckpt")
-    ap.add_argument("--mhr", default="/data/rick/sam3d/ckpt/assets/mhr_model.pt")
-    ap.add_argument("--out", default="/data/rick/sam3d/smoke_out")
+    ap.add_argument("--frames", default="./frames")
+    ap.add_argument("--dets", default="./dets.json")
+    ap.add_argument("--ckpt", default=CFG.CKPT)
+    ap.add_argument("--mhr", default=CFG.MHR_PATH)
+    ap.add_argument("--out", default="./out/smoke")
     ap.add_argument("--limit", type=int, default=8)
     args = ap.parse_args()
 

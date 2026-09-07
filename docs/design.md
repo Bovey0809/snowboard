@@ -3,7 +3,7 @@
 ## What the model gives us
 
 `SAM3DBodyEstimator.process_one_image(img, bboxes=...)` returns one dict per person.
-Verified on real snowboard-cross frames (2026-09-07, ultra11):
+Verified on real snowboard-cross frames (2026-09-07):
 
 | field | shape | notes |
 |---|---|---|
@@ -77,7 +77,7 @@ toeside against heelside, and turn-to-turn consistency.
   anything.
 - Two riders in shot: subject selection must be tracked, not per-frame "tallest".
 
-## Validation results (2026-09-07, ultra11)
+## Validation results (2026-09-07)
 
 **Board frame holds up.** Measured on 36 tracked frames of snowboard-cross
 footage at 25 fps:

@@ -18,6 +18,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from snowpose import board as B, geometry as G, mhr, overlay as O  # noqa: E402
+from snowpose import config as CFG  # noqa: E402
 from snowpose import smooth as S, track as T, turns as TU, video as V  # noqa: E402
 
 
@@ -27,9 +28,9 @@ def main():
     ap.add_argument("--start", type=float, default=0.0)
     ap.add_argument("--end", type=float, default=None)
     ap.add_argument("--fps", type=float, default=12.0)
-    ap.add_argument("--det-weights", default="/home/rick/assets/yolo26x.pt")
-    ap.add_argument("--seg-weights", default="/data/rick/sam3d/yolo26n-seg.pt")
-    ap.add_argument("--out", default="/data/rick/sam3d/board_check")
+    ap.add_argument("--det-weights", default=CFG.DETECTOR)
+    ap.add_argument("--seg-weights", default=CFG.SEGMENTOR)
+    ap.add_argument("--out", default="./out/board_check")
     ap.add_argument("--device", default="0")
     args = ap.parse_args()
 
