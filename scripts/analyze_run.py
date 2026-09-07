@@ -117,9 +117,13 @@ def main():
     print(f"smoothed joints (window {max(5,int(round(fps*0.6))|1)}), "
           f"{spikes} spike samples replaced")
 
-    sign, how = TU.orient_long_axis(Ks, args.stance)
+    sign, how, stance_conf = TU.orient_long_axis(Ks, args.stance)
     print(f"board orientation: {how}")
     notes.append(f"Board nose direction resolved by {how}.")
+    if stance_conf < 1.0:
+        notes.append(f"That stance inference is weak (confidence {stance_conf:.1f}), so "
+                     f"the sign of fore/aft balance is unreliable here — its magnitude "
+                     f"still holds. Pass --stance regular|goofy to pin it.")
 
     series = {k: [] for k in METRIC_KEYS}
     frames_kept, bfs = [], []

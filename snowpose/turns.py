@@ -25,13 +25,16 @@ def orient_long_axis(kpts, stance="auto"):
             toward the nose of the board, so the head leads the hips along it.
 
     Returns:
-        (sign, how) where multiplying the axis `ankle_L - ankle_R` by `sign`
-        makes it point toward the nose, and `how` records the basis of the call.
+        (sign, how, confidence). Multiplying `ankle_L - ankle_R` by `sign` points
+        it toward the nose; `how` records the basis of the call; `confidence` is
+        the median lead over its spread, and is `inf` when the stance was given
+        explicitly. Below about 1.0 the inference is not trustworthy and every
+        fore/aft sign that depends on it should be treated as unknown.
     """
     if stance == "regular":
-        return 1.0, "stance=regular (left foot forward)"
+        return 1.0, "stance=regular (left foot forward)", float("inf")
     if stance == "goofy":
-        return -1.0, "stance=goofy (right foot forward)"
+        return -1.0, "stance=goofy (right foot forward)", float("inf")
 
     K = np.asarray(kpts, dtype=float)
     votes = []
@@ -44,13 +47,13 @@ def orient_long_axis(kpts, stance="auto"):
         hip_mid = (k[mhr.L_HIP] + k[mhr.R_HIP]) / 2.0
         votes.append(float(np.dot(k[mhr.NOSE] - hip_mid, axis)))
     if not votes:
-        return 1.0, "auto failed, defaulted to regular"
+        return 1.0, "auto failed, defaulted to regular", 0.0
     lead = float(np.median(votes))
     sign = 1.0 if lead >= 0 else -1.0
     conf = abs(lead) / (np.std(votes) + 1e-6)
     return sign, (f"auto: head leads hips by {lead:+.3f}m along the axis "
                   f"(confidence {conf:.1f}); inferred "
-                  f"{'regular' if sign > 0 else 'goofy'}")
+                  f"{'regular' if sign > 0 else 'goofy'}"), float(conf)
 
 
 def rolling_baseline(x, fps, window_s=8.0):

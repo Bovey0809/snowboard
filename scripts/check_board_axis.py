@@ -86,7 +86,7 @@ def main():
         outs.append(o)
         idxs.append(fi)
     K, _ = S.smooth_keypoints(np.stack(kpts), window=max(5, int(round(fps * 0.6)) | 1))
-    sign, how = TU.orient_long_axis(K, "auto")
+    sign, how, stance_conf = TU.orient_long_axis(K, "auto")
     print(f"orientation: {how}")
 
     rows, agreements, vis = [], [], []
