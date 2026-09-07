@@ -1,0 +1,9 @@
+footage/
+runs/
+out/
+*.npz
+*.mp4
+*.webm
+__pycache__/
+*.pyc
+.venv/
