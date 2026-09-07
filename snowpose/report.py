@@ -19,6 +19,7 @@ THRESHOLDS = {
     "stiff_legs": 35.0,           # deg mean knee flexion below this = riding tall
     "edge_gap": 0.30,             # relative toe-vs-heel difference
     "inconsistency": 0.35,        # coefficient of variation of turn commitment
+    "one_edge_fraction": 0.9,     # share of frames on a single edge = not turning
 }
 
 
@@ -133,6 +134,31 @@ def analyse(metrics, scored_turns, sym, cons, notes=None):
             "drill": ("Practise a low, athletic stance: flex ankles, knees and hips "
                       "together and hold it for a whole run so it stops feeling odd."),
         })
+
+    # Riding one edge the whole way down is a descent, not linked turns, and it is
+    # the single most useful thing to say about such a run. Checked before the
+    # turn-quality findings, which are meaningless without edge changes.
+    th = _f(metrics.get("toe_heel", []))
+    if len(th) > 10:
+        toe_share = float((th > 0).mean())
+        one_edge = max(toe_share, 1.0 - toe_share)
+        if one_edge >= T["one_edge_fraction"]:
+            edge = "toe" if toe_share > 0.5 else "heel"
+            other = "heel" if edge == "toe" else "toe"
+            findings.append({
+                "id": "single_edge",
+                "severity": 1.0,
+                "title": f"The whole run is on the {edge} edge — no edge changes",
+                "detail": (f"{one_edge:.0%} of frames have the mass on the {edge} "
+                           f"side of the board. That is a {edge}side descent — "
+                           f"sideslipping or skidding down the fall line — rather "
+                           f"than linked turns, so nothing below about turn quality "
+                           f"means much."),
+                "drill": (f"This is the standard plateau. Work on committing to "
+                          f"{other}side: {other}side traverses across the slope, "
+                          f"then {other}side garlands, then link one {edge}side to "
+                          f"one {other}side turn at a time on gentle pitch."),
+            })
 
     if scored_turns:
         peaks = _f([t.get("peak_commitment", np.nan) for t in scored_turns])

@@ -128,6 +128,32 @@ the same-edge neighbours either side merged. Three consecutive same-edge turns i
 the output is the signature of getting this wrong, since zero-crossings alone can
 never produce one.
 
+## A near-miss: the offset that was not an offset
+
+Two Mixkit clips both measured a `toe_heel` median of **-0.0695 and -0.0693**.
+Two unrelated riders landing on the same number to four decimal places looks
+exactly like a geometric bias — plausibly the body's mass projecting near the
+ankles, which sit heel-ward of the heel/toe midpoint used as the frame origin.
+Subtracting a per-run baseline duly "fixed" the segmentation, turning one clip's
+single long turn into four.
+
+It was wrong. Two checks killed it:
+
+1. A third clip, of racers, sat at median **-0.006 with 46% of samples positive**
+   and 14 zero crossings. A constant offset would have pushed that clip negative
+   too. The metric is well centred.
+2. Frame-by-frame inspection of the Mixkit clip showed the rider on the **heel
+   edge for all 24 seconds** — a heelside descent, never once switching to toe.
+
+So the "offset" was two riders genuinely riding one edge, and the baseline
+correction was inventing turns from the neutral middle of a heelside descent,
+including a 10.7 s phantom "toeside". Absolute zero was right all along.
+
+The lesson kept in the code: **riding one edge the whole way down is real, common,
+and the single most useful thing to say about such a run** — so it is now a
+first-class finding (`single_edge`) rather than something a normalisation hides.
+`rolling_baseline` survives as opt-in, documented with why it is off.
+
 ## Still open
 
 - **Absolute edge angle** needs world-up. Candidate: fit the slope plane to foot

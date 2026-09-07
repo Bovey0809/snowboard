@@ -53,7 +53,41 @@ def orient_long_axis(kpts, stance="auto"):
                   f"{'regular' if sign > 0 else 'goofy'}")
 
 
-def segment(toe_heel, fps, min_duration=0.35, min_amplitude=0.04, frames=None):
+def rolling_baseline(x, fps, window_s=8.0):
+    """A slowly-varying baseline for `toe_heel`. **Off by default — see below.**
+
+    Two clips measured a `toe_heel` median of -0.0695 and -0.0693, which looks
+    exactly like a geometric offset and tempts you to subtract it. It is not one.
+    A third clip of racers sat at median -0.006 with 46% of samples positive, so
+    the metric is well centred; the other two riders were simply on their heel
+    edge the whole way down, which frame-by-frame inspection confirmed.
+
+    Subtracting a per-run baseline therefore *manufactures* turns: on a rider
+    holding one edge for 24 s it invented four, including a 10.7 s "toeside" that
+    was really the neutral middle of a heelside descent. Riding one edge the whole
+    run is real, common and worth reporting — do not normalise it away.
+
+    Kept for a genuinely miscalibrated rig, where a fixed offset can be passed as
+    `baseline=<float>` instead. The window must be long compared with a turn
+    (1-3 s) so it cannot follow the turn oscillation itself.
+    """
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    w = max(3, int(round(window_s * fps)) | 1)
+    if n <= 2 or w >= n:
+        return np.full(n, float(np.nanmedian(x)))
+    half = w // 2
+    out = np.empty(n)
+    for i in range(n):
+        lo, hi = max(0, i - half), min(n, i + half + 1)
+        seg = x[lo:hi]
+        seg = seg[np.isfinite(seg)]
+        out[i] = float(np.median(seg)) if len(seg) else np.nan
+    return out
+
+
+def segment(toe_heel, fps, min_duration=0.35, min_amplitude=0.04, frames=None,
+            baseline=None, baseline_window_s=8.0):
     """Split a run into turns at edge changes.
 
     A raw zero-crossing split over-segments badly: a rider holding one long edge
@@ -79,10 +113,20 @@ def segment(toe_heel, fps, min_duration=0.35, min_amplitude=0.04, frames=None):
     Returns:
         list of dicts with start/end sample index, edge, duration and peak commitment.
     """
-    x = np.asarray(toe_heel, dtype=float)
-    n = len(x)
+    raw = np.asarray(toe_heel, dtype=float)
+    n = len(raw)
     if n < 3:
         return []
+
+    # Edge changes are oscillations about the rider's neutral stance, not about
+    # geometric zero. See rolling_baseline for why the offset exists.
+    if baseline == "rolling":
+        base = rolling_baseline(raw, fps, baseline_window_s)
+    elif baseline in (None, "none"):
+        base = np.zeros(n)
+    else:
+        base = np.full(n, float(baseline))
+    x = raw - base
 
     def span_seconds(a, b):
         if frames is None:
@@ -95,14 +139,14 @@ def segment(toe_heel, fps, min_duration=0.35, min_amplitude=0.04, frames=None):
     sign[sign == 0] = 1
     bounds = [0] + [i for i in range(1, n) if sign[i] != sign[i - 1]] + [n]
 
-    raw = []
+    pieces = []
     for a, b in zip(bounds[:-1], bounds[1:]):
         seg = x[a:b]
         if not len(seg):
             continue
         peak = float(np.max(np.abs(seg)))
         dur = span_seconds(a, b)
-        raw.append({"a": a, "b": b,
+        pieces.append({"a": a, "b": b,
                     "edge": "toe" if np.median(seg) > 0 else "heel",
                     "peak": peak, "dur": dur,
                     "kept": dur >= min_duration and peak >= min_amplitude})
@@ -110,7 +154,7 @@ def segment(toe_heel, fps, min_duration=0.35, min_amplitude=0.04, frames=None):
     # Group each run of same-edge kept segments, absorbing the dropped blips that
     # sit between them. A group ends when the next kept segment flips edge.
     groups, current = [], None
-    for r in raw:
+    for r in pieces:
         if not r["kept"]:
             continue
         if current is not None and r["edge"] == current["edge"]:
@@ -132,8 +176,11 @@ def segment(toe_heel, fps, min_duration=0.35, min_amplitude=0.04, frames=None):
             "start": int(a), "end": int(b),
             "duration_s": round(span_seconds(a, b), 3),
             "edge": g["edge"],
+            # commitment is measured from the rider's neutral stance
             "peak_commitment": round(float(np.max(np.abs(seg))), 4),
             "peak_frame": int(a + int(np.argmax(np.abs(seg)))),
+            "baseline": round(float(np.median(base[a:b])), 4),
+            "peak_absolute": round(float(raw[a + int(np.argmax(np.abs(seg)))]), 4),
         })
     return turns
 
