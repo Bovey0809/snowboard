@@ -128,6 +128,30 @@ the same-edge neighbours either side merged. Three consecutive same-edge turns i
 the output is the signature of getting this wrong, since zero-crossings alone can
 never produce one.
 
+## Runs on three clips
+
+Screened with `find_segments.py`, then analysed end to end. All three came from
+freely-licensed sources; the two stock clips are not redistributed here.
+
+| clip | segment | rider px | frames | turns | leading finding |
+|---|---|---|---|---|---|
+| Universiade snowboard cross (CC BY 3.0) | 11 s of a 20 s window | 267 | 82 | 4 (2 toe / 2 heel) | mass toward the nose |
+| Mixkit "sportsman down the hill" | 23.5 s, one shot | 463 | 352 | 3, 92% heelside | whole run on the heel edge |
+| Mixkit "snowboarding down the hill" | 16 s tracked of 29.5 s | 295 | 240 | 1, 100% heelside | whole run on the heel edge |
+
+The two stock clips are continuous single shots, so the tracker holds one rider
+for the whole clip — 352 unbroken frames on the first. Both riders descend
+entirely on the heel edge, which the pipeline now reports as the headline rather
+than dressing it up as turn statistics.
+
+The screening step earned its place. Of eight candidate clips, `find_segments.py`
+plus a frame check rejected six: three were selfie-stick or helmet POV (the rider
+is out of frame or fisheye-distorted), one was a promo edit of portraits and
+walking, one was rail jibbing rather than turns, and two were drone shots with the
+subject a few pixels tall. **A high median subject height is a warning sign, not a
+recommendation** — near-frame-height means a selfie or a talking head. The usable
+band on 720p footage was roughly 250-500 px.
+
 ## A near-miss: the offset that was not an offset
 
 Two Mixkit clips both measured a `toe_heel` median of **-0.0695 and -0.0693**.
