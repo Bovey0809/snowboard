@@ -76,3 +76,49 @@ toeside against heelside, and turn-to-turn consistency.
 - Per-frame inference means jitter. Smoothing is required before differentiating
   anything.
 - Two riders in shot: subject selection must be tracked, not per-frame "tallest".
+
+## Validation results (2026-09-07, ultra11)
+
+**Board frame holds up.** Measured on 36 tracked frames of snowboard-cross
+footage at 25 fps:
+
+- **zero** left/right leg swaps across 35 adjacent frame pairs — the model's leg
+  labelling is temporally consistent, so no temporal L/R disambiguation is needed
+- heel→toe length 0.201–0.207 m (MHR has a fixed foot), so the toe direction never
+  collapses and `N` is always well-conditioned
+- deck planarity median 0.052, p90 0.109 — the four foot points really are close to
+  a plane
+- stance width median 0.413 m, std 0.090 m
+
+**But it is noisy.** Board axes rotate a median 5.5°/frame (p90 13°, max 64°), and
+knee flexion moves 3.5–4.9°/frame against signal ranges of 20–35°. Hence
+`smooth.py`: Hampel despiking then Savitzky-Golay, which cuts noise 3.5× on a
+turn-shaped signal while preserving amplitude. Order is joints → smooth → metrics,
+never metrics → smooth, because the angle computations are non-linear.
+
+**End-to-end run** on a 20 s race segment (`--start 1184 --end 1204`): 3 shots
+detected, an 11 s shot chosen, one rider tracked at 267 px mean height through
+82 frames while two other riders were in shot, stance auto-inferred as regular,
+and **6 turns segmented (2 toeside, 4 heelside)** with durations 0.48–1.12 s.
+Mean inclination 33.8°, angulation 53.2°, knee flexion 75.2°.
+
+## The thresholds are not calibrated
+
+On that segment the report flags "mass too far forward" (fore/aft +0.106) as its
+top finding. The subject is a World Universiade snowboard-cross racer, and an
+aggressive forward stance is *correct* technique for racing — so this is a false
+positive produced by thresholds meant for recreational riding.
+
+That is the honest state of `report.py`: the geometry is verified, the coaching
+thresholds are informed guesses. They live in one dict (`report.THRESHOLDS`) so
+they can be recalibrated against footage of a rider whose level is known. Until
+then, treat the *measurements* as sound and the *verdicts* as provisional.
+
+## Still open
+
+- **Absolute edge angle** needs world-up. Candidate: fit the slope plane to foot
+  contact points across a run, which is self-contained but needs camera motion
+  compensation.
+- **YOLO board detection** to pin the true edges and correct for boot/binding
+  offsets, rather than inferring the deck from feet alone.
+- Rider height in frame drives quality; chairlift-distance footage will be weak.
