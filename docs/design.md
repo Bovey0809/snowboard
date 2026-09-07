@@ -221,12 +221,5 @@ remains future work.
 
 ## Example output
 
-![overlay](examples/overlay_frame.jpg)
-
-Skeleton and projected mesh on the tracked rider, board axes at the feet, the
-metrics HUD, and the scrolling toe/heel trace whose sign changes mark the turns.
-
-![board axis check](examples/board_axis_check.jpg)
-
-The validation view: red is the detected snowboard mask's principal axis, cyan is
-the foot-derived long axis projected through the model's own camera.
+See the README — the annotated frame, metrics panel, edge trace and the board-axis
+validation view are all shown there.

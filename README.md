@@ -4,6 +4,36 @@
 [SAM 3D Body](https://github.com/facebookresearch/sam-3d-body), to turn footage of a
 run into specific, actionable technique feedback.
 
+![annotated overlay](docs/examples/overlay_frame.jpg)
+
+*One frame of `overlay.mp4`: projected mesh and skeleton on the tracked rider, the
+board axes fitted to the feet, the metrics panel, and the scrolling toe/heel trace
+whose sign changes mark the turns. Two other riders are in shot; the tracker holds
+the one it locked on.*
+
+## What it measures
+
+<img src="docs/examples/hud.jpg" width="420" alt="metrics panel">
+
+Every number is expressed in a frame fitted to the rider's own feet, so it is
+independent of camera angle — no world-up or gravity estimate needed. Inclination
+is lean relative to the board; angulation is the bend at the hip that lets you hold
+an edge without leaning; fore/aft is where the mass sits along the board.
+
+<img src="docs/examples/edge_trace.jpg" width="420" alt="toe/heel edge trace">
+
+The centre of mass crosses the board at every edge change, so turns segment from
+the sign changes of this trace — cyan toeside, yellow heelside.
+
+## The board comes from the feet
+
+<img src="docs/examples/board_axis_check.jpg" width="560" alt="board axis validation">
+
+SAM 3D Body has no notion of a snowboard, but MHR70 gives heels and toe tips and
+both feet are strapped to the deck. Red is a detected snowboard mask's principal
+axis; cyan is the axis recovered from the feet alone. They agree to a **median
+3.2°** across the frames that produced a mask, where chance would be 45°.
+
 ## Status
 
 Validated end to end on an 8x RTX 6000D box: the model runs on real
