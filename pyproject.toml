@@ -1,0 +1,14 @@
+[project]
+name = "snowpose"
+version = "0.1.0"
+description = "3D snowboard technique analysis on SAM 3D Body"
+requires-python = ">=3.11"
+dependencies = ["numpy", "opencv-python"]
+
+# The model itself is not installable from PyPI. See README.md: SAM 3D Body must be
+# cloned and its checkpoints fetched separately, and inference needs a GPU.
+[project.optional-dependencies]
+detect = ["ultralytics"]
+
+[tool.setuptools]
+packages = ["snowpose"]
