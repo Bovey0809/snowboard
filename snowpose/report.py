@@ -20,6 +20,8 @@ THRESHOLDS = {
     "edge_gap": 0.30,             # relative toe-vs-heel difference
     "inconsistency": 0.35,        # coefficient of variation of turn commitment
     "one_edge_fraction": 0.9,     # share of frames on a single edge = not turning
+    "traverse_seconds": 5.0,      # an "edge" held longer than this is a traverse
+    "traverse_fraction": 0.5,     # share of run spent traversing rather than turning
 }
 
 
@@ -159,6 +161,37 @@ def analyse(metrics, scored_turns, sym, cons, notes=None):
                           f"then {other}side garlands, then link one {edge}side to "
                           f"one {other}side turn at a time on gentle pitch."),
             })
+
+    # A turn lasts 1-3 s. An "edge" held for 20 s is a traverse across the slope,
+    # and counting it as one turn flatters the run badly: it inflates the turn
+    # count and makes duration-based statistics meaningless. Reported before the
+    # turn-quality findings for the same reason as single_edge.
+    if scored_turns:
+        durs = np.array([t.get("duration_s", np.nan) for t in scored_turns], dtype=float)
+        durs = durs[np.isfinite(durs)]
+        if len(durs):
+            long_mask = durs > T["traverse_seconds"]
+            total = float(durs.sum())
+            trav = float(durs[long_mask].sum())
+            share = trav / total if total > 0 else 0.0
+            if long_mask.any() and share >= T["traverse_fraction"]:
+                real = int((~long_mask).sum())
+                findings.append({
+                    "id": "traversing",
+                    "severity": round(min(1.0, share), 2),
+                    "title": "Long traverses, not linked turns",
+                    "detail": (f"{int(long_mask.sum())} of {len(durs)} segments last "
+                               f"longer than {T['traverse_seconds']:.0f}s — "
+                               f"{trav:.0f}s of {total:.0f}s is spent holding one edge "
+                               f"across the slope, against only {total-trav:.0f}s of "
+                               f"actual turning across {real} genuine turn(s). A turn "
+                               f"lasts 1-3s; anything longer is a traverse, so treat "
+                               f"the turn count below as segments, not turns."),
+                    "drill": ("Shorten the traverses deliberately: pick a rhythm and "
+                              "change edge every 3 seconds, then every 2, even if the "
+                              "turns are scruffy at first. Linking is a separate skill "
+                              "from holding an edge, and it only comes from reps."),
+                })
 
     if scored_turns:
         peaks = _f([t.get("peak_commitment", np.nan) for t in scored_turns])

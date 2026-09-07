@@ -31,8 +31,13 @@ the sign changes of this trace — cyan toeside, yellow heelside.
 
 SAM 3D Body has no notion of a snowboard, but MHR70 gives heels and toe tips and
 both feet are strapped to the deck. Red is a detected snowboard mask's principal
-axis; cyan is the axis recovered from the feet alone. They agree to a **median
-3.2°** across the frames that produced a mask, where chance would be 45°.
+axis; cyan is the axis recovered from the feet alone.
+
+They agree to a **median 1.3°** — p25 0.5°, p75 2.5°, 98% within 15° — measured
+across **771 frames** of a clip where the rider was large enough for the segmenter
+to find the board reliably. On the broadcast frame shown above, where the rider is
+only 267 px tall and just 15 frames produced a mask, agreement was 3.2°. Chance
+would be 45° either way.
 
 ## Status
 

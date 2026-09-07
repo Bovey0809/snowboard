@@ -138,6 +138,7 @@ freely-licensed sources; the two stock clips are not redistributed here.
 | Universiade snowboard cross (CC BY 3.0) | 11 s of a 20 s window | 267 | 82 | 4 (2 toe / 2 heel) | mass toward the nose |
 | Mixkit "sportsman down the hill" | 23.5 s, one shot | 463 | 352 | 3, 92% heelside | whole run on the heel edge |
 | Mixkit "snowboarding down the hill" | 16 s tracked of 29.5 s | 295 | 240 | 1, 100% heelside | whole run on the heel edge |
+| follow-cam, indoor slope (private) | 65.7 s, one shot | 608 | 982 | 6 segments, 3 real turns | long traverses, not linked turns |
 
 The two stock clips are continuous single shots, so the tracker holds one rider
 for the whole clip — 352 unbroken frames on the first. Both riders descend
@@ -151,6 +152,24 @@ walking, one was rail jibbing rather than turns, and two were drone shots with t
 subject a few pixels tall. **A high median subject height is a warning sign, not a
 recommendation** — near-frame-height means a selfie or a talking head. The usable
 band on 720p footage was roughly 250-500 px.
+
+## A turn is 1-3 seconds; anything longer is a traverse
+
+The 66 s follow-cam clip segmented into "6 turns" — but three of them lasted 23.7 s,
+20.2 s and 13.8 s. Holding an edge for 20 s is a traverse across the slope, and
+counting it as a turn flatters the run badly: it inflates the turn count and makes
+every duration statistic meaningless. On that clip **58 s of 62 s was traverse and
+only 4 s was actual turning**, across 3 genuine turns.
+
+`report.py` now says so first (`traversing`), and labels the count as *segments*
+rather than turns. The race segment, whose turns run 0.9-3.0 s, correctly does not
+trigger it — which is the check that the threshold discriminates rather than just
+firing on everything.
+
+Because inference dominates the cost, `scripts/rebuild_report.py` regenerates a
+report from an existing run's `metrics.csv` and `turns.json`, and can re-sign
+fore/aft for a stance you know, so rewording or rethresholding findings never means
+re-running a clip.
 
 ## A near-miss: the offset that was not an offset
 
@@ -201,19 +220,17 @@ foot-derived long axis projected through the model's own predicted camera. Both
 axes are sign-ambiguous, so agreement folds to [0°, 90°] where 0 is perfect and
 random chance sits near 45°.
 
-On the 82-frame race segment, 15 frames had an associated snowboard mask:
+Measured on two clips:
 
-| statistic | agreement |
-|---|---|
-| median | **3.2°** |
-| p25 / p75 | 1.9° / 5.6° |
-| within 15° | 87% |
-| chance | ~45° |
+| clip | rider px | frames with a mask | median | p25 / p75 | within 15° |
+|---|---|---|---|---|---|
+| follow-cam, indoor slope | 608 | **771 of 982** | **1.3°** | 0.5° / 2.5° | 98% |
+| broadcast race segment | 267 | 15 of 82 | 3.2° | 1.9° / 5.6° | 87% |
 
-So the feet do recover the board's plane, to a few degrees. Only 15 of 82 frames
-produced a mask — `yolo26n-seg` is a nano model and the boards are small and
-motion-blurred — so this is a decisive spot-check, not a dense measurement. A
-larger seg model would give a denser one.
+Chance would be ~45°. So the feet recover the board's plane to about a degree when
+the rider is big enough in frame for the segmenter to find the board at all — and
+mask yield is what scales with subject size, not accuracy: 79% of frames at 608 px
+against 18% at 267 px, while the median only moved from 1.3° to 3.2°.
 
 This makes board detection a *refinement* rather than a dependency, as designed:
 fusing the mask into the 3D fit to pin true edges and correct boot/binding offsets
