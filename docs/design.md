@@ -168,3 +168,15 @@ larger seg model would give a denser one.
 This makes board detection a *refinement* rather than a dependency, as designed:
 fusing the mask into the 3D fit to pin true edges and correct boot/binding offsets
 remains future work.
+
+## Example output
+
+![overlay](examples/overlay_frame.jpg)
+
+Skeleton and projected mesh on the tracked rider, board axes at the feet, the
+metrics HUD, and the scrolling toe/heel trace whose sign changes mark the turns.
+
+![board axis check](examples/board_axis_check.jpg)
+
+The validation view: red is the detected snowboard mask's principal axis, cyan is
+the foot-derived long axis projected through the model's own camera.
