@@ -151,9 +151,10 @@ def main():
         print(f"  t={frames_kept[t['start']]/fps+args.start:6.2f}s {t['edge']:>4}side "
               f"{t['duration_s']:.2f}s commit {t['peak_commitment']:.3f}")
 
-    if len(scored) < 4:
-        notes.append(f"Only {len(scored)} turns were segmented; symmetry and "
-                     f"consistency numbers need more turns to mean much.")
+    if len(scored) < 6:
+        notes.append(f"Only {len(scored)} turns were segmented. Symmetry and "
+                     f"consistency are computed but should not be trusted on so "
+                     f"few turns — a single transitional turn skews both.")
     notes.append("Metrics are expressed in a frame fitted to the rider's feet, so "
                  "they are independent of camera angle but say nothing about the "
                  "board's angle to the actual slope.")

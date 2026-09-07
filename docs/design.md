@@ -99,7 +99,7 @@ never metrics → smooth, because the angle computations are non-linear.
 **End-to-end run** on a 20 s race segment (`--start 1184 --end 1204`): 3 shots
 detected, an 11 s shot chosen, one rider tracked at 267 px mean height through
 82 frames while two other riders were in shot, stance auto-inferred as regular,
-and **6 turns segmented (2 toeside, 4 heelside)** with durations 0.48–1.12 s.
+and **4 turns segmented (2 toeside, 2 heelside)** with durations 0.88–2.96 s.
 Mean inclination 33.8°, angulation 53.2°, knee flexion 75.2°.
 
 ## The thresholds are not calibrated
@@ -114,11 +114,57 @@ thresholds are informed guesses. They live in one dict (`report.THRESHOLDS`) so
 they can be recalibrated against footage of a rider whose level is known. Until
 then, treat the *measurements* as sound and the *verdicts* as provisional.
 
+## A turn-segmentation trap, found and fixed
+
+A raw zero-crossing split over-segments. A rider holding one long edge produces
+brief opposite-sign wobbles as the smoothed centre of mass crosses the board's
+centreline, and every wobble cut a turn in two. On this segment a single 2.96 s
+heelside turn came apart into three "turns" separated by blips of 0.08–0.24 s with
+peaks as low as 0.003 — which both inflated the turn count and made the
+"inconsistency" finding partly an artifact of its own fragmentation.
+
+Discarding sub-threshold segments is not enough; they have to be *absorbed* and
+the same-edge neighbours either side merged. Three consecutive same-edge turns in
+the output is the signature of getting this wrong, since zero-crossings alone can
+never produce one.
+
 ## Still open
 
 - **Absolute edge angle** needs world-up. Candidate: fit the slope plane to foot
   contact points across a run, which is self-contained but needs camera motion
   compensation.
-- **YOLO board detection** to pin the true edges and correct for boot/binding
-  offsets, rather than inferring the deck from feet alone.
+- **Fusing the board mask into the 3D fit**, to pin true edges and correct for
+  boot and binding offsets. The cross-check above validates the feet-only frame;
+  fusion would tighten it.
+- **Threshold calibration** against footage of riders whose level is known.
 - Rider height in frame drives quality; chairlift-distance footage will be weak.
+
+## The foot-derived board frame checks out against pixels (validated)
+
+The design's load-bearing claim is that the rider's feet recover the board's
+orientation. That is now tested against independent evidence rather than assumed.
+COCO includes `snowboard` (class 31), and a *segmentation mask* yields a genuine
+2D long axis — a bounding box does not, since a box carries no orientation.
+
+`scripts/check_board_axis.py` compares the mask's principal axis against the
+foot-derived long axis projected through the model's own predicted camera. Both
+axes are sign-ambiguous, so agreement folds to [0°, 90°] where 0 is perfect and
+random chance sits near 45°.
+
+On the 82-frame race segment, 15 frames had an associated snowboard mask:
+
+| statistic | agreement |
+|---|---|
+| median | **3.2°** |
+| p25 / p75 | 1.9° / 5.6° |
+| within 15° | 87% |
+| chance | ~45° |
+
+So the feet do recover the board's plane, to a few degrees. Only 15 of 82 frames
+produced a mask — `yolo26n-seg` is a nano model and the boards are small and
+motion-blurred — so this is a decisive spot-check, not a dense measurement. A
+larger seg model would give a denser one.
+
+This makes board detection a *refinement* rather than a dependency, as designed:
+fusing the mask into the 3D fit to pin true edges and correct boot/binding offsets
+remains future work.
