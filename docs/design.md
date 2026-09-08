@@ -139,6 +139,7 @@ freely-licensed sources; the two stock clips are not redistributed here.
 | Mixkit "sportsman down the hill" | 23.5 s, one shot | 463 | 352 | 3, 92% heelside | whole run on the heel edge |
 | Mixkit "snowboarding down the hill" | 16 s tracked of 29.5 s | 295 | 240 | 1, 100% heelside | whole run on the heel edge |
 | follow-cam, indoor slope (private) | 65.7 s, one shot | 608 | 982 | 6 segments, 3 real turns | long traverses, not linked turns |
+| vertical phone clip, ends in a fall (private) | 6.9 s of riding | 336 | 104 | 3 real turns | upper body winds up before the crash |
 
 The two stock clips are continuous single shots, so the tracker holds one rider
 for the whole clip — 352 unbroken frames on the first. Both riders descend
@@ -152,6 +153,62 @@ walking, one was rail jibbing rather than turns, and two were drone shots with t
 subject a few pixels tall. **A high median subject height is a warning sign, not a
 recommendation** — near-frame-height means a selfie or a talking head. The usable
 band on 720p footage was roughly 250-500 px.
+
+## A run mean hides the fault that causes the crash
+
+A 17 s vertical phone clip contained 6.9 s of riding and then a fall. On the riding
+portion the report said **"No faults crossed the flagging thresholds"** — 0.2 s
+before the rider hit the snow. That is the worst possible failure for a coaching
+tool: silence in front of the one event that mattered.
+
+The data had it all along. Hip-shoulder separation grew from ~10° to ~24° and
+*stayed* there for the final 1.7 s. But the run mean was 13.4°, under the 15°
+threshold, because the clean earlier seconds diluted it. Faults that end in a crash
+are precisely the ones that develop, so a mean-based test is structurally blind to
+them.
+
+`sustained_excursion()` now checks whether a fault is *held* above threshold for at
+least a second, independent of the mean, and reports the window:
+
+> Hips and shoulders stay more than 15 deg apart for 1.7s **between 5.2s and 6.9s**,
+> peaking at 25 deg, even though the run averages 13 deg.
+
+The window closes exactly at the fall. Verified against the overlay frames first —
+the mesh fits the body well through that stretch and the shoulder twist is visible
+in the image, so this is signal, not tracking noise. The race segment, which has no
+sustained excursion, correctly gains no such finding.
+
+## Two dead ends in detecting "not riding"
+
+The same clip spent 10 s lying in the snow, which the pipeline reported as an
+**11 s heelside turn with commitment 0.759** — quadruple any real turn — and which
+doubled the run's mean inclination. Non-riding frames do not merely add noise; they
+produce confident, plausible, wrong numbers.
+
+Two obvious detectors were measured and both are dead:
+
+1. **Board-frame metrics cannot see it.** Riding inclination spanned 3-23°, on the
+   ground 3-71° — overlapping. This is not a tuning problem but a direct consequence
+   of the design: the board stays strapped to the feet, so the frame rotates with
+   the body, and the frame is deliberately invariant to exactly the rotation that
+   separates upright from fallen. The property that makes the metrics
+   camera-independent also makes them blind here.
+2. **Bounding-box aspect ratio cannot either.** On this clip it looked perfect —
+   riding w/h 0.37-0.64 against 1.01-1.45 on the ground, cleanly separable. Then
+   the same measure on the race clip returned **0.95-2.49, with 100% of frames
+   above any workable threshold**: a snowboard-cross racer in a deep tuck is wider
+   than they are tall. A detector tuned on an upright beginner would label every
+   frame of a racing run a fall.
+
+So `report.py` ships a *guard*, not a classifier: a segment whose mass sits more
+than 0.45 body-heights off the board centreline is flagged "part of this clip is not
+riding" and the user is told to trim and re-run. Real turns measured 0.04-0.30
+across every clip, so the threshold has wide clearance. It makes no claim about
+*why* those frames are not riding.
+
+Detecting a fall properly needs a temporal signal — sustained loss of translation
+combined with an orientation change — or a small dedicated classifier. Both are
+future work; the guard stops the silent corruption in the meantime.
 
 ## A turn is 1-3 seconds; anything longer is a traverse
 

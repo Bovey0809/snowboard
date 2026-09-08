@@ -73,7 +73,8 @@ def main():
                  "independent of camera angle but say nothing about the board's "
                  "angle to the actual slope.")
 
-    res = R.analyse(metrics, scored, sym, cons, notes=notes)
+    times = [float(r["t_s"]) for r in rows] if "t_s" in rows[0] else None
+    res = R.analyse(metrics, scored, sym, cons, notes=notes, fps=fps, times=times)
     md = R.to_markdown(res, title=args.title or run.name)
     (run / "report.md").write_text(md)
     (run / "turns.json").write_text(json.dumps(

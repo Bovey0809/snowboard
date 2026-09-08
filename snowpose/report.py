@@ -22,6 +22,8 @@ THRESHOLDS = {
     "one_edge_fraction": 0.9,     # share of frames on a single edge = not turning
     "traverse_seconds": 5.0,      # an "edge" held longer than this is a traverse
     "traverse_fraction": 0.5,     # share of run spent traversing rather than turning
+    "sustained_seconds": 1.0,     # a fault held this long counts even if the mean is fine
+    "implausible_commitment": 0.45,  # lateral mass offset no rider reaches while riding
 }
 
 
@@ -30,12 +32,42 @@ def _f(x):
     return a[np.isfinite(a)]
 
 
+def sustained_excursion(values, threshold, fps, min_seconds=1.0):
+    """The longest stretch where |value| stays at or above `threshold`.
+
+    A run mean hides a fault that develops. Measured on a clip that ended in a
+    crash, hip-shoulder separation grew from 10 deg to 24 deg over the final 1.5 s
+    and held there — but the run mean was 13 deg, under the 15 deg threshold, so
+    the report said "no faults" 0.2 s before the rider hit the ground.
+
+    Returns (duration_s, start_idx, end_idx, peak) for the longest qualifying
+    stretch, or None.
+    """
+    v = np.abs(np.asarray(values, dtype=float))
+    over = np.isfinite(v) & (v >= threshold)
+    best = None
+    i = 0
+    n = len(over)
+    while i < n:
+        if not over[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and over[j + 1]:
+            j += 1
+        dur = (j - i + 1) / fps
+        if dur >= min_seconds and (best is None or dur > best[0]):
+            best = (dur, i, j + 1, float(np.nanmax(v[i:j + 1])))
+        i = j + 1
+    return best
+
+
 def _mean(x, default=np.nan):
     a = _f(x)
     return float(a.mean()) if len(a) else default
 
 
-def analyse(metrics, scored_turns, sym, cons, notes=None):
+def analyse(metrics, scored_turns, sym, cons, notes=None, fps=None, times=None):
     """Produce ranked findings.
 
     Args:
@@ -43,6 +75,8 @@ def analyse(metrics, scored_turns, sym, cons, notes=None):
         scored_turns: output of turns.score_turns.
         sym: output of turns.symmetry.
         cons: output of turns.consistency.
+        fps: frames per second, needed to judge how long a fault was held.
+        times: optional per-frame timestamps, so findings can be located in the clip.
 
     Returns:
         dict with "findings" (ranked list) and "summary" numbers.
@@ -161,6 +195,82 @@ def analyse(metrics, scored_turns, sym, cons, notes=None):
                           f"then {other}side garlands, then link one {edge}side to "
                           f"one {other}side turn at a time on gentle pitch."),
             })
+
+    # A "turn" whose mass sits half a body-height off the board centreline is not a
+    # turn. Across every clip measured, real turns peaked at 0.04-0.30; the 10 s a
+    # rider spent lying in the snow after a crash scored 0.76 and was reported as an
+    # 11 s heelside turn, quadrupling the run's apparent best. This guard rejects
+    # such segments without claiming to know why they are not riding — see
+    # docs/design.md for why detecting a fall properly is harder than it looks.
+    bogus = [t for t in scored_turns
+             if t.get("peak_commitment", 0) > T["implausible_commitment"]]
+    if bogus:
+        worst = max(bogus, key=lambda t: t["peak_commitment"])
+        findings.append({
+            "id": "not_riding",
+            "severity": 1.0,
+            "title": "Part of this clip is not riding",
+            "detail": (f"{len(bogus)} segment(s) show the centre of mass more than "
+                       f"{T['implausible_commitment']:.2f} body-heights off the board "
+                       f"centreline, peaking at {worst['peak_commitment']:.2f} over "
+                       f"{worst['duration_s']:.0f}s. No rider holds that while riding — "
+                       f"it means a fall, a sit-down or a stop got included. Trim the "
+                       f"clip to the riding and re-run; every number here is skewed "
+                       f"until you do."),
+            "drill": ("Not a technique fault — re-run with --start/--end bracketing "
+                      "the riding only."),
+        })
+
+    # A run mean hides a fault that develops mid-run, which is exactly the shape of
+    # a fault that ends in a crash. These checks fire on a fault *held* for a while
+    # even when the average is clean.
+    if fps:
+        def when(i, j):
+            if times is not None and len(times) > max(i, j - 1):
+                return f" between {float(times[i]):.1f}s and {float(times[j-1]):.1f}s"
+            return ""
+
+        sep_series = metrics.get("hip_shoulder_sep", [])
+        if len(_f(sep_series)) > 3 and not (np.isfinite(sep_mag) and sep_mag > T["counter_rotation"]):
+            hit = sustained_excursion(sep_series, T["counter_rotation"], fps,
+                                      T["sustained_seconds"])
+            if hit:
+                dur, i, j, peak = hit
+                findings.append({
+                    "id": "counter_rotation_developing",
+                    "severity": round(min(1.0, peak / (2 * T["counter_rotation"])), 2),
+                    "title": "Upper body winds up against the board during the run",
+                    "detail": (f"Hips and shoulders stay more than "
+                               f"{T['counter_rotation']:.0f} deg apart for {dur:.1f}s"
+                               f"{when(i, j)}, peaking at {peak:.0f} deg, even though the "
+                               f"run averages {sep_mag:.0f} deg. A fault that builds like "
+                               f"this is how a caught edge starts: once the shoulders lead, "
+                               f"the board follows late and then bites."),
+                    "drill": ("Watch that stretch of the overlay and note what your lead "
+                              "hand does. Keep it pointed down the board and turn from "
+                              "the ankles and knees; if the wind-up returns, stop the run "
+                              "and reset rather than riding through it."),
+                })
+
+        fa_series = metrics.get("fore_aft", [])
+        if len(_f(fa_series)) > 3 and not (np.isfinite(fa) and abs(fa) > T["fore_aft_bias"]):
+            hit = sustained_excursion(fa_series, T["fore_aft_bias"], fps,
+                                      T["sustained_seconds"])
+            if hit:
+                dur, i, j, peak = hit
+                findings.append({
+                    "id": "fore_aft_developing",
+                    "severity": round(min(1.0, peak / (2 * T["fore_aft_bias"])), 2),
+                    "title": "Balance drifts off centre for part of the run",
+                    "detail": (f"Mass sits more than {T['fore_aft_bias']:.2f} body-heights "
+                               f"off centre along the board for {dur:.1f}s{when(i, j)}, "
+                               f"peaking at {peak:.2f}, while the run averages "
+                               f"{fa:+.3f}. The average looks fine because the drift "
+                               f"cancels out."),
+                    "drill": ("Re-watch that stretch. Drifting fore/aft mid-run usually "
+                              "means the terrain or speed changed and your stance did not "
+                              "move with it."),
+                })
 
     # A turn lasts 1-3 s. An "edge" held for 20 s is a traverse across the slope,
     # and counting it as one turn flatters the run badly: it inflates the turn

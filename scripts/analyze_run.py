@@ -164,7 +164,8 @@ def main():
                  "they are independent of camera angle but say nothing about the "
                  "board's angle to the actual slope.")
 
-    res = R.analyse(metrics, scored, sym, cons, notes=notes)
+    times = [args.start + f / fps for f in frames_kept]
+    res = R.analyse(metrics, scored, sym, cons, notes=notes, fps=fps, times=times)
     md = R.to_markdown(res, title=f"{Path(args.video).stem} "
                                   f"[{args.start:.0f}s-{(args.end or info['duration_s']):.0f}s]")
     (out / "report.md").write_text(md)
