@@ -3,7 +3,9 @@ name = "snowpose"
 version = "0.1.0"
 description = "3D snowboard technique analysis on SAM 3D Body"
 requires-python = ">=3.11"
-dependencies = ["numpy", "opencv-python"]
+# Pillow draws the overlay text: OpenCV's Hershey fonts are ASCII-only, so
+# without it the overlay cannot render Chinese at all.
+dependencies = ["numpy", "opencv-python", "pillow"]
 
 # The model itself is not installable from PyPI. See README.md: SAM 3D Body must be
 # cloned and its checkpoints fetched separately, and inference needs a GPU.

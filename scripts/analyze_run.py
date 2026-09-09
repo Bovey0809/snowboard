@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from snowpose import geometry as G, mhr, overlay as O, report as R  # noqa: E402
+from snowpose import coach as C, geometry as G, mhr, overlay as O, report as R  # noqa: E402
 from snowpose import config as CFG  # noqa: E402
 from snowpose import smooth as S, track as T, turns as TU, video as V  # noqa: E402
 
@@ -31,6 +31,12 @@ def main():
     ap.add_argument("--end", type=float, default=None)
     ap.add_argument("--fps", type=float, default=12.0, help="analysis frame rate")
     ap.add_argument("--stance", default="auto", choices=["auto", "regular", "goofy"])
+    ap.add_argument("--lang", default="zh", choices=list(C.LANGS),
+                    help="overlay language. Chinese needs a TrueType font: set "
+                         "SNOWPOSE_FONT, or install one (fonts-wqy-zenhei)")
+    ap.add_argument("--level", default="learner", choices=list(C.LEVELS),
+                    help="declared rider level; picks the target bands the "
+                         "gauges draw and the report judges against")
     ap.add_argument("--weights", default=CFG.DETECTOR)
     ap.add_argument("--out", default="./out/run")
     ap.add_argument("--device", default="0")
@@ -41,6 +47,16 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     notes = []
+
+    # Chinese needs a real TrueType face; cv2's Hershey fonts have no CJK glyphs
+    # and would silently render a video full of blanks. Better to say so and
+    # fall back than to burn 20 minutes of inference into an unreadable overlay.
+    lang = args.lang
+    if lang != "en" and not O.font_ok():
+        print(f"[warn] no usable font for --lang {lang} "
+              f"(set SNOWPOSE_FONT to a .ttf/.ttc, or install fonts-wqy-zenhei); "
+              f"falling back to English")
+        lang = "en"
 
     info = V.probe(args.video)
     print(f"source: {info['width']}x{info['height']} {info['fps']:.2f}fps "
@@ -120,10 +136,15 @@ def main():
     sign, how, stance_conf = TU.orient_long_axis(Ks, args.stance)
     print(f"board orientation: {how}")
     notes.append(f"Board nose direction resolved by {how}.")
-    if stance_conf < 1.0:
+    # A drawn target zone is far more persuasive than a footnote, so a weak
+    # stance inference does not merely caveat fore/aft advice — it withdraws it.
+    # Coaching "get forward" with the nose and tail swapped coaches the wrong leg.
+    stance_ok = stance_conf >= 1.0
+    if not stance_ok:
         notes.append(f"That stance inference is weak (confidence {stance_conf:.1f}), so "
-                     f"the sign of fore/aft balance is unreliable here — its magnitude "
-                     f"still holds. Pass --stance regular|goofy to pin it.")
+                     f"the sign of fore/aft balance is unreliable here. Every fore/aft "
+                     f"finding and cue is withheld and the gauge reads 'unknown'; the "
+                     f"magnitude still holds. Pass --stance regular|goofy to pin it.")
 
     series = {k: [] for k in METRIC_KEYS}
     frames_kept, bfs = [], []
@@ -165,7 +186,17 @@ def main():
                  "board's angle to the actual slope.")
 
     times = [args.start + f / fps for f in frames_kept]
-    res = R.analyse(metrics, scored, sym, cons, notes=notes, fps=fps, times=times)
+    res = R.analyse(metrics, scored, sym, cons, notes=notes, fps=fps, times=times,
+                    level=args.level, stance_ok=stance_ok)
+    cues = C.cue_stream(metrics, fps, level=args.level, stance_ok=stance_ok,
+                        lang=lang)
+    tally = {}
+    for c in cues:
+        if c:
+            tally[c["text"]] = tally.get(c["text"], 0) + 1
+    print(f"coach ({args.level}): cues on {sum(tally.values())}/{len(cues)} frames"
+          + ("  " + ", ".join(f"{n}x {t}" for t, n in
+                              sorted(tally.items(), key=lambda kv: -kv[1])) if tally else ""))
     md = R.to_markdown(res, title=f"{Path(args.video).stem} "
                                   f"[{args.start:.0f}s-{(args.end or info['duration_s']):.0f}s]")
     (out / "report.md").write_text(md)
@@ -199,9 +230,20 @@ def main():
                     cv2.circle(img, (int(x), int(y)), 1, (0, 170, 255), -1)
             O.draw_skeleton(img, k2)
             O.draw_board_frame(img, bf, o["focal_length"], o["pred_cam_t"], w / 2.0, h / 2.0)
-            O.draw_hud(img, {k: metrics[k][i] for k in METRIC_KEYS}, turn=turn_of.get(i))
-            O.draw_edge_trace(img, metrics["toe_heel"], i)
-            canvas.append(img)
+            vals = {k: metrics[k][i] for k in METRIC_KEYS}
+            rows = C.gauge_rows(vals, level=args.level, stance_ok=stance_ok,
+                                lang=lang)
+            # Shapes go straight onto the frame; text is queued and drawn in one
+            # pass at the end, so the frame makes a single trip through PIL.
+            tx = []
+            O.draw_gauges(img, rows, turn=turn_of.get(i), level=args.level,
+                          lang=lang, text=tx)
+            # The cue is anchored to the rider so the eye stays on the body; it
+            # is told where the gauge panel sits so it never lands on top of it.
+            O.draw_cue(img, cues[i], box=boxes.get(fi), avoid=(0, 0, 396, 244),
+                       text=tx)
+            O.draw_edge_trace(img, metrics["toe_heel"], i, lang=lang, text=tx)
+            canvas.append(O.render_text(img, tx))
         O.write_video(out / "overlay.mp4", canvas, fps)
         print(f"wrote {out}/overlay.mp4")
 

@@ -102,17 +102,134 @@ detected, an 11 s shot chosen, one rider tracked at 267 px mean height through
 and **4 turns segmented (2 toeside, 2 heelside)** with durations 0.88–2.96 s.
 Mean inclination 33.8°, angulation 53.2°, knee flexion 75.2°.
 
-## The thresholds are not calibrated
+## The thresholds are not calibrated, but they are now level-aware
 
-On that segment the report flags "mass too far forward" (fore/aft +0.106) as its
+On that segment the report flagged "mass too far forward" (fore/aft +0.106) as a
 top finding. The subject is a World Universiade snowboard-cross racer, and an
-aggressive forward stance is *correct* technique for racing — so this is a false
+aggressive forward stance is *correct* technique for racing — so this was a false
 positive produced by thresholds meant for recreational riding.
 
-That is the honest state of `report.py`: the geometry is verified, the coaching
-thresholds are informed guesses. They live in one dict (`report.THRESHOLDS`) so
-they can be recalibrated against footage of a rider whose level is known. Until
-then, treat the *measurements* as sound and the *verdicts* as provisional.
+The fix was not a better number, it was a better shape. A single symmetric
+`|fore_aft| > 0.07` test cannot express "sitting back is a fault but driving the
+nose is not", so the targets became **bands**, keyed by declared rider level
+(`--level learner|racer`, `coach.py`). The racer band is deliberately asymmetric,
+`-0.04 to +0.16`, and the same +0.106 now passes:
+
+| clip | mean fore/aft | learner target | racer target | flagged? |
+|---|---|---|---|---|
+| race (Universiade) | +0.106 | -0.07 to +0.07 | -0.04 to +0.16 | learner only |
+| mixkit_sportsman | +0.073 | -0.07 to +0.07 | -0.04 to +0.16 | learner only |
+
+That is the honest state of the coaching layer: the geometry is verified to about
+a degree, the bands are informed guesses. Both level tables live in one module so
+they can be recalibrated against footage of riders whose level is known. Until
+then, treat the *measurements* as sound and the *verdicts* as provisional — which
+is why the overlay prints `targets: learner` on every frame rather than letting
+the viewer assume the green zone is authoritative.
+
+## Advice is the gap, so the target has to be drawable
+
+"angulation 39 deg" is not advice. A learner has no idea what 39 should be, so
+the number carries no instruction — the *gap between the value and a target* is
+what carries it. That is the whole reason `coach.py` sits underneath both the
+report and the renderer: a target that only exists inside an `if` statement in
+`report.py` cannot be drawn, and a threshold copied into the renderer is a second
+thing to recalibrate and a chance for the green zone to contradict the sentence
+printed under it. `report.to_markdown` prints a `target` column populated from the
+same `coach.bands()` the gauges draw.
+
+Two visual channels, deliberately different in rate:
+
+- **Gauges** show every metric continuously against its band. Always on, no
+  interpretation needed — marker inside the green zone or not.
+- **One cue**, anchored to the rider, speaks only when a value is *clearly* out.
+
+The split matters because a caption is not a gauge. Cueing on any band exit fired
+on **82 of 82** frames of the race clip and **317 of 352** of mixkit_sportsman: a
+caption on every frame is wallpaper, and the point of the causal hierarchy
+(balance → pressure → edge → rotation, one cue wins) was to say *less*, not to say
+something different constantly. Requiring the value to reach the same "bad"
+boundary the gauge paints red drops that to 26-80 frames, and gives the viewer
+one rule to learn: **the caption names the red bar.**
+
+### But the crash clip then went silent
+
+That gate alone made `vert_ride` produce **zero** cues — the clip whose written
+headline is a shoulder wind-up growing from 10° to 25° in the final 1.5 s before
+the rider goes down. Separation peaked at 25.1° and held above 20° for 1.6 s,
+never reaching the 30° "bad" line, so the overlay was quietest exactly where it
+should have been loudest. `report.py` already argues this case for its written
+findings (`sustained_excursion`); the cue needed the same second path in.
+
+So a value only into *amber* also speaks, once it has held there for a second.
+The line is 0.33 of a half-band because that clip sets it: the wind-up clears
+0.33 for 1.6 s but clears 0.5 for only 0.8 s.
+
+That change works, and it costs duty cycle, so three rules bound how much the
+caption talks. Sensitivity and nagging are separate problems and one threshold
+cannot serve both.
+
+1. **The sustained window is marked whole**, not just the part past the hold.
+   The hold decides *whether* a slow drift counts; once it does, the interesting
+   stretch is the entire wind-up. This is review footage, not live coaching —
+   withholding the caption over the very frames that show the fault growing had
+   no upside, and on the crash clip it was the difference between a 0.7 s cue
+   truncated by the end of the video and the full 1.4 s.
+2. **Nothing shows for under a second.** Within one spell the top-ranked fault
+   can change, and the ranking is not stable enough to show at that rate — it
+   produced 0.3-0.4 s fragments that flicked to another message and back. Those
+   are dropped rather than padded, since padding only displaces the next cue.
+3. **At most 3 s, then 2 s of silence.** Applied to the caption *channel*, not
+   per cue id: resting per id looks equivalent and is not, because when two
+   faults alternate each change restarts its own spell and nothing ever rests.
+   That bug alone put the race clip at a caption on 98% of frames while every
+   individual cue was inside its cap.
+
+| clip | level | duty | cues | shortest |
+|---|---|---|---|---|
+| vert_ride | learner | 39% | 2 | 1.33s |
+| rick_indoor | learner | 40% | 13 | 1.00s |
+| mixkit_sportsman | learner | 44% | 4 | 2.27s |
+| mixkit_downhill | learner | 45% | 4 | 1.20s |
+| vert_full | learner | 46% | 4 | 1.33s |
+| race | racer | 66% | 3 | 1.04s |
+
+Every cue is now 1.0-3.0 s, median 1.8 s. `vert_ride` is the shape to want: quiet
+through the clean riding, then `重心后移` and `肩别抢转` across the 2.7 s that end
+in the fall.
+
+## The overlay speaks Chinese, and that is not a string swap
+
+OpenCV's `putText` uses Hershey fonts — vector strokes with no glyph outside
+ASCII. It does not error on `内倾`; it draws nothing. So the overlay renders all
+text through PIL against a real TrueType face, resolved by `config.FONT` from
+`SNOWPOSE_FONT` or from the usual system paths, with `--lang zh|en` choosing the
+strings. No font is bundled: they are large and separately licensed, and without
+one `analyze_run.py` says so and falls back to English rather than burning 20
+minutes of inference into a video of empty boxes.
+
+The catch is cost. A PIL round trip is per *image*, not per string, so calling it
+for each of the ~13 labels on a frame would convert 1920x1080 thirteen times over.
+The draw functions therefore queue their text and `render_text` applies the frame's
+whole queue in one pass; shapes stay on cv2 and are drawn first, so the queue only
+ever holds what belongs on top.
+
+The Chinese is written to the same brief as the English — imperative corrections,
+four to six characters, what to do rather than what is wrong: 重心前移, 屈膝下沉,
+双腿均衡发力, 屈髋立刃, 果断立刃, 肩别抢转.
+
+The other two guards are about not lying persuasively:
+
+- A cue must hold 0.3 s before it appears and lingers 0.5 s after it clears. At
+  12 fps a value resting on a band edge flips state several times a second, and
+  a strobing caption is a rendering fault wearing coaching clothes.
+- **A weak stance inference withdraws fore/aft advice rather than caveating it.**
+  Two of the three sample clips inferred stance below the confidence floor (0.2
+  and 1.6 against a floor of 1.0). Every fore/aft sign depends on which end of
+  the board is the nose, so with it wrong "GET FORWARD" coaches the wrong leg —
+  and a caption burned into the video is far more persuasive than a footnote at
+  the bottom of a report. Below the floor the gauge reads `unknown`, draws no
+  band and no marker, and the finding is suppressed.
 
 ## A turn-segmentation trap, found and fixed
 

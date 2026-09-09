@@ -11,13 +11,14 @@ sign depends on a per-run inference that can be wrong.
 import argparse
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from snowpose import report as R, turns as TU  # noqa: E402
+from snowpose import coach as C, report as R, turns as TU  # noqa: E402
 
 SKIP = {"frame", "source_frame", "t_s"}
 
@@ -27,6 +28,8 @@ def main():
     ap.add_argument("--run", required=True, help="directory holding metrics.csv and turns.json")
     ap.add_argument("--stance", default=None, choices=["regular", "goofy"],
                     help="re-sign fore/aft for a known stance")
+    ap.add_argument("--level", default="learner", choices=list(C.LEVELS),
+                    help="declared rider level; picks the target bands")
     ap.add_argument("--title", default=None)
     args = ap.parse_args()
 
@@ -63,6 +66,18 @@ def main():
     elif orientation:
         notes.append(f"Board nose direction resolved by {orientation}.")
 
+    # A stated stance pins the sign; an inferred one is only trustworthy above
+    # the confidence floor, and below it every fore/aft finding is withheld
+    # rather than caveated. The confidence is recorded in the orientation string.
+    stance_ok = True
+    if not args.stance:
+        m = re.search(r"confidence ([0-9.]+)", orientation)
+        stance_ok = float(m.group(1)) >= 1.0 if m else True
+        if not stance_ok:
+            notes.append(f"The run's stance inference was weak ({m.group(0)}), so "
+                         f"fore/aft findings are withheld. Re-run with "
+                         f"--stance regular|goofy to recover them.")
+
     seg = TU.segment(metrics["toe_heel"], fps, frames=frames)
     scored = TU.score_turns(seg, metrics, fps)
     sym, cons = TU.symmetry(scored), TU.consistency(scored)
@@ -74,13 +89,14 @@ def main():
                  "angle to the actual slope.")
 
     times = [float(r["t_s"]) for r in rows] if "t_s" in rows[0] else None
-    res = R.analyse(metrics, scored, sym, cons, notes=notes, fps=fps, times=times)
+    res = R.analyse(metrics, scored, sym, cons, notes=notes, fps=fps, times=times,
+                    level=args.level, stance_ok=stance_ok)
     md = R.to_markdown(res, title=args.title or run.name)
     (run / "report.md").write_text(md)
     (run / "turns.json").write_text(json.dumps(
         {"turns": scored, "symmetry": sym, "consistency": cons,
          "orientation": orientation, "fps": fps,
-         "stance_applied": args.stance}, indent=1))
+         "stance_applied": args.stance, "level": args.level}, indent=1))
     print(md)
 
 

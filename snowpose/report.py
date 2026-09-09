@@ -1,30 +1,18 @@
 """Turn measurements into ranked, actionable feedback.
 
-The thresholds below are coaching heuristics, not validated norms. They encode
+The thresholds are coaching heuristics, not validated norms. They encode
 widely-taught snowboard technique (stay stacked over the board, drive the edge
-with angulation rather than pure lean, keep the shoulders quiet, load both legs)
-and they are deliberately kept in one place so they can be recalibrated once
-there is footage of a known-good rider to compare against.
+with angulation rather than pure lean, keep the shoulders quiet, load both legs).
+
+They now live in `coach.py`, keyed by declared rider level, because this module
+is no longer their only consumer: the overlay draws the same bands as target
+zones on its gauges. Two copies of a threshold is two things to recalibrate and
+one chance for a green zone to contradict the sentence printed under it.
 """
 
 import numpy as np
 
-# name -> (threshold, severity weight). Tuned to flag only clear faults.
-THRESHOLDS = {
-    "fore_aft_bias": 0.07,        # |mean COM along board| / body scale
-    "knee_asymmetry": 10.0,       # deg between left and right knee flexion
-    "low_edge_commitment": 0.06,  # peak |toe_heel| below this = riding flat
-    "excess_lean": 0.55,          # inclination / (inclination+angulation) above this
-    "counter_rotation": 15.0,     # deg hip-to-shoulder separation
-    "stiff_legs": 35.0,           # deg mean knee flexion below this = riding tall
-    "edge_gap": 0.30,             # relative toe-vs-heel difference
-    "inconsistency": 0.35,        # coefficient of variation of turn commitment
-    "one_edge_fraction": 0.9,     # share of frames on a single edge = not turning
-    "traverse_seconds": 5.0,      # an "edge" held longer than this is a traverse
-    "traverse_fraction": 0.5,     # share of run spent traversing rather than turning
-    "sustained_seconds": 1.0,     # a fault held this long counts even if the mean is fine
-    "implausible_commitment": 0.45,  # lateral mass offset no rider reaches while riding
-}
+from . import coach
 
 
 def _f(x):
@@ -67,7 +55,8 @@ def _mean(x, default=np.nan):
     return float(a.mean()) if len(a) else default
 
 
-def analyse(metrics, scored_turns, sym, cons, notes=None, fps=None, times=None):
+def analyse(metrics, scored_turns, sym, cons, notes=None, fps=None, times=None,
+            level="learner", stance_ok=True):
     """Produce ranked findings.
 
     Args:
@@ -77,11 +66,16 @@ def analyse(metrics, scored_turns, sym, cons, notes=None, fps=None, times=None):
         cons: output of turns.consistency.
         fps: frames per second, needed to judge how long a fault was held.
         times: optional per-frame timestamps, so findings can be located in the clip.
+        level: declared rider level, which picks the band table in `coach`.
+        stance_ok: False when the stance inference was too weak to trust. Every
+            fore/aft finding depends on the sign of the board's long axis, so
+            they are suppressed rather than caveated — telling a rider to get
+            forward when the nose is the tail coaches the wrong leg.
 
     Returns:
         dict with "findings" (ranked list) and "summary" numbers.
     """
-    T = THRESHOLDS
+    T = coach.thresholds(level)
     findings = []
 
     fa = _mean(metrics.get("fore_aft", []))
@@ -92,23 +86,33 @@ def analyse(metrics, scored_turns, sym, cons, notes=None, fps=None, times=None):
     sep = _f(metrics.get("hip_shoulder_sep", []))
     sep_mag = float(np.mean(np.abs(sep))) if len(sep) else np.nan
 
-    if np.isfinite(fa) and abs(fa) > T["fore_aft_bias"]:
-        where = "toward the nose" if fa > 0 else "toward the tail"
+    # The target is a band, not a magnitude, and for a racer it is deliberately
+    # asymmetric: an aggressive forward stance is correct technique. A symmetric
+    # |fa| > threshold test is what flagged a Universiade snowboard-cross racer
+    # at +0.106 for riding the way their discipline requires.
+    fa_lo, fa_hi = T["fore_aft_band"]
+    fa_flagged = stance_ok and np.isfinite(fa) and not (fa_lo <= fa <= fa_hi)
+    if fa_flagged:
+        back = fa < fa_lo
+        where = "toward the tail" if back else "toward the nose"
+        half = max(1e-6, 0.5 * (fa_hi - fa_lo))
+        excess = (fa_lo - fa) if back else (fa - fa_hi)
         drill = ("Ride a few runs deliberately driving your front knee over your "
                  "front toes; on a groomer, try straight-lining with your weight "
                  "clearly forward so you learn what centred feels like.")
-        if fa < 0:
+        if back:
             drill = ("Classic back-seat riding. On an easy pitch, ride with your "
                      "hands on your front knee for a run — it forces your mass "
                      "forward and you will feel the nose start to bite.")
         findings.append({
             "id": "fore_aft_bias",
-            "severity": round(min(1.0, abs(fa) / (2 * T["fore_aft_bias"])), 2),
+            "severity": round(min(1.0, excess / half), 2),
             "title": f"Mass sits {where} rather than centred",
             "detail": (f"Centre of mass averages {fa:+.3f} of body height along the "
-                       f"board (centred would be near 0.00). "
+                       f"board, outside the {fa_lo:+.2f} to {fa_hi:+.2f} target for "
+                       f"a {level}. "
                        + ("Sitting back makes the nose wash out and the board hard "
-                          "to steer." if fa < 0 else
+                          "to steer." if back else
                           "Too far forward loads the nose and makes the tail break away.")),
             "drill": drill,
         })
@@ -253,7 +257,7 @@ def analyse(metrics, scored_turns, sym, cons, notes=None, fps=None, times=None):
                 })
 
         fa_series = metrics.get("fore_aft", [])
-        if len(_f(fa_series)) > 3 and not (np.isfinite(fa) and abs(fa) > T["fore_aft_bias"]):
+        if stance_ok and len(_f(fa_series)) > 3 and not fa_flagged:
             hit = sustained_excursion(fa_series, T["fore_aft_bias"], fps,
                                       T["sustained_seconds"])
             if hit:
@@ -352,7 +356,9 @@ def analyse(metrics, scored_turns, sym, cons, notes=None, fps=None, times=None):
     findings.sort(key=lambda f: -f["severity"])
     return {
         "findings": findings,
+        "level": level,
         "summary": {
+            "level": level,
             "frames": int(len(_f(metrics.get("inclination", [])))),
             "turns": len(scored_turns),
             "mean_inclination_deg": None if not np.isfinite(incl) else round(incl, 1),
@@ -367,18 +373,29 @@ def analyse(metrics, scored_turns, sym, cons, notes=None, fps=None, times=None):
 
 def to_markdown(result, title="Run analysis"):
     s = result["summary"]
+    level = result.get("level", "learner")
+    B = coach.bands(level)
     out = [f"# {title}", ""]
-    out.append(f"{s['turns']} turns over {s['frames']} analysed frames.")
+    out.append(f"{s['turns']} turns over {s['frames']} analysed frames, judged "
+               f"against **{level}** targets.")
     out.append("")
-    out.append("| measure | value |")
-    out.append("|---|---|")
-    for k, label in [("mean_inclination_deg", "Mean inclination"),
-                     ("mean_angulation_deg", "Mean angulation"),
-                     ("mean_knee_flex_deg", "Mean knee flexion"),
-                     ("mean_fore_aft", "Mean fore/aft balance"),
-                     ("mean_abs_hip_shoulder_sep_deg", "Mean hip-shoulder separation")]:
+    # The target column is the same band the overlay draws as a green zone, so
+    # the written report and the video always agree about what "good" was.
+    out.append("| measure | value | target |")
+    out.append("|---|---|---|")
+    for k, label, bk in [
+            ("mean_inclination_deg", "Mean inclination", "inclination"),
+            ("mean_angulation_deg", "Mean angulation", "angulation"),
+            ("mean_knee_flex_deg", "Mean knee flexion", "knee_flex"),
+            ("mean_fore_aft", "Mean fore/aft balance", "fore_aft"),
+            ("mean_abs_hip_shoulder_sep_deg", "Mean hip-shoulder separation",
+             "hip_shoulder_sep")]:
         v = s.get(k)
-        out.append(f"| {label} | {'--' if v is None else v} |")
+        lo, hi = B[bk]["band"]
+        fmt = "{:+.2f}" if bk == "fore_aft" else "{:.0f}"
+        tgt = (f"|{fmt.format(hi)}| or less" if bk == "hip_shoulder_sep"
+               else f"{fmt.format(lo)} to {fmt.format(hi)}")
+        out.append(f"| {label} | {'--' if v is None else v} | {tgt} |")
     out.append("")
 
     if not result["findings"]:
